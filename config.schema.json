@@ -1,0 +1,31 @@
+{
+    "pluginAlias": "Awtrix Plugin",
+    "pluginType": "accessory",
+    "headerDisplay": "Homebridge plugin for an Awtrix Clock",
+    "footerDisplay": "Rudolf-Michael Liebhart, June 2021",
+    "singular": true,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "title": "Name",
+                "type": "string",
+                "required": true,
+                "default": "Awtrix"
+            },
+            "ip": {
+                "title": "Awtrix IP",
+                "type": "string",
+                "required": true,
+                "format": "ipv4",
+                "default": "192.168.1.2"
+            },
+            "port": {
+                "title": "Awtrix port number",
+                "type": "string",
+                "required": true,
+                "default": "7000"
+            }
+        }
+    }
+}
