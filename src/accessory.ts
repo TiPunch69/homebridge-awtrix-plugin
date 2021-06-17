@@ -28,6 +28,14 @@ export = (api: API) => {
  * the API URL
  */
 const URL = '/api/v3/basics';
+/**
+ * the available operations on Awtrix
+ */
+enum OPERATION {
+  ONOFF = 'power',
+  APPLICATION = 'app',
+  ANIMATION = 'showAnimation',
+}
 
 class AwtrixAccessory implements AccessoryPlugin {
   /**
@@ -47,9 +55,17 @@ class AwtrixAccessory implements AccessoryPlugin {
    */
   private readonly humidityService: Service;
   /**
-   * the main switch service to power it on or off
+   * a remote TV service for all operations
    */
-  private readonly switchService: Service;
+  private readonly remoteService: Service;
+  /**
+   * indicates if a timer is running
+   */
+  private timerRunning = false;
+  /**
+   * the timer string
+   */
+  private timer: string;
 
   /**
    * the constructor from the HAP API
@@ -57,6 +73,7 @@ class AwtrixAccessory implements AccessoryPlugin {
   constructor(log: Logging, config: AccessoryConfig) {
     this.log = log;
     axios.defaults.baseURL = 'http://' + config.ip + ':' + config.port;
+    this.timer = config.timer;
 
     this.temperatureService = new hap.Service.TemperatureSensor(config.name);
     this.temperatureService.getCharacteristic(hap.Characteristic.CurrentTemperature)
@@ -88,12 +105,13 @@ class AwtrixAccessory implements AccessoryPlugin {
           });
       });
 
-    this.switchService = new hap.Service.Switch(config.name);
-    this.switchService.getCharacteristic(hap.Characteristic.On)
+    this.remoteService = new hap.Service.Television(config.name);
+    this.remoteService.setCharacteristic(hap.Characteristic.SleepDiscoveryMode, hap.Characteristic.SleepDiscoveryMode.ALWAYS_DISCOVERABLE);
+    this.remoteService.getCharacteristic(hap.Characteristic.Active)
       .onGet(() => {
         return axios.post(
           URL,
-          { get: 'powerState' },
+          { 'get': 'powerState' },
         ).then(response => {
           return response.data.powerState;
         })
@@ -115,13 +133,86 @@ class AwtrixAccessory implements AccessoryPlugin {
             this.log.error('Error during setting the power state to power state ' + value + ':' + error);
           });
       });
+    this.remoteService.getCharacteristic(hap.Characteristic.RemoteKey)
+      .onSet((newValue) => {
+        switch (newValue) {
+          case hap.Characteristic.RemoteKey.INFORMATION: {
+            this.sendOperation(OPERATION.ANIMATION, 'random');
+            break;
+          }
+          case hap.Characteristic.RemoteKey.ARROW_LEFT: {
+            this.sendOperation(OPERATION.APPLICATION, 'back');
+            break;
+          }
+          case hap.Characteristic.RemoteKey.ARROW_RIGHT: {
+            this.sendOperation(OPERATION.APPLICATION, 'next');
+            break;
+          }
+          case hap.Characteristic.RemoteKey.PLAY_PAUSE: {
+            this.sendOperation(OPERATION.APPLICATION, 'pause');
+            break;
+          }
+          case hap.Characteristic.RemoteKey.SELECT: {
+            let data = { 'timer': this.timer };
+            if (this.timerRunning){
+              // timer is running
+              data = {'timer' : 'stop'};
+            }
+            axios.post(
+              URL,
+              data,
+            ).then(response => {
+              if (!response.data.success) {
+                this.log.error('Error during setting the timer');
+              }
+            })
+              .catch(error => {
+                this.log.error('Error during setting the timer: ' + error);
+              });
+            break;
+          }
+        }
+      });
 
     this.informationService = new hap.Service.AccessoryInformation()
       .setCharacteristic(hap.Characteristic.Manufacturer, 'Blueforcer')
       .setCharacteristic(hap.Characteristic.Model, 'Awtrix')
       .setCharacteristic(hap.Characteristic.Name, config.name);
 
-    log.info('Awtrix initializiation initializing');
+    this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision)
+      .onGet(() => {
+        return axios.post(
+          URL,
+          { 'get': 'version' },
+        ).then(response => {
+          return response.data.version;
+        })
+          .catch(error => {
+            this.log.error('Error during version query: ' + error);
+            return false;
+          });
+      });
+
+    log.info('Awtrix initializiation finished');
+  }
+
+  /**
+   * This function sends a command to the Awtrix clock.
+   * @param operation the operation that should be executed
+   * @param value the detailed operation value
+   */
+  private sendOperation(operation: OPERATION, value: string) {
+    axios.post(
+      URL,
+      { OPERATION: value },
+    ).then(response => {
+      if (!response.data.success) {
+        this.log.error('Error during setting of operation "' + OPERATION + '" to value "' + value + '"');
+      }
+    })
+      .catch(error => {
+        this.log.error('Error during setting of operation "' + OPERATION + '" to value "' + value + '":' + error);
+      });
   }
 
   /*
@@ -133,7 +224,7 @@ class AwtrixAccessory implements AccessoryPlugin {
       this.informationService,
       this.temperatureService,
       this.humidityService,
-      this.switchService,
+      this.remoteService,
     ];
   }
 
