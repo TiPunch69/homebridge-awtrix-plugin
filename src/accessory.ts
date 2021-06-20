@@ -82,7 +82,11 @@ class AwtrixAccessory implements AccessoryPlugin {
           URL,
           { get: 'matrixInfo' },
         ).then(response => {
-          return response.data.Temp.toFixed(1);
+          if (response.data.Temp !== undefined) {
+            return response.data.Temp.toFixed(1);
+          } else {
+            return 0;
+          }
         })
           .catch(error => {
             this.log.error('Error retrieving temperature: ' + error);
@@ -97,7 +101,11 @@ class AwtrixAccessory implements AccessoryPlugin {
           URL,
           { get: 'matrixInfo' },
         ).then(response => {
-          return response.data.Hum.toFixed(1);
+          if (response.data.Hum !== undefined) {
+            return response.data.Hum.toFixed(1);
+          } else {
+            return 0;
+          }
         })
           .catch(error => {
             this.log.error('Error retrieving humidity: ' + error);
@@ -113,17 +121,25 @@ class AwtrixAccessory implements AccessoryPlugin {
           URL,
           { 'get': 'powerState' },
         ).then(response => {
-          return response.data.powerState;
+          if (response.data.powerState === 'true') {
+            return hap.Characteristic.Active.ACTIVE;
+          } else {
+            return hap.Characteristic.Active.INACTIVE;
+          }
         })
           .catch(error => {
             this.log.error('Error during power state query: ' + error);
-            return false;
+            return hap.Characteristic.Active.INACTIVE;
           });
       })
       .onSet((value) => {
+        let power = false;
+        if (value === hap.Characteristic.Active.ACTIVE) {
+          power = true;
+        }
         return axios.post(
           URL,
-          { power: value },
+          { power: power },
         ).then(response => {
           if (!response.data.success) {
             this.log.error('Error during setting the power state to power state ' + value);
@@ -154,9 +170,9 @@ class AwtrixAccessory implements AccessoryPlugin {
           }
           case hap.Characteristic.RemoteKey.SELECT: {
             let data = { 'timer': this.timer };
-            if (this.timerRunning){
+            if (this.timerRunning) {
               // timer is running
-              data = {'timer' : 'stop'};
+              data = { 'timer': 'stop' };
             }
             axios.post(
               URL,
@@ -179,13 +195,35 @@ class AwtrixAccessory implements AccessoryPlugin {
       .setCharacteristic(hap.Characteristic.Model, 'Awtrix')
       .setCharacteristic(hap.Characteristic.Name, config.name);
 
+    this.informationService.getCharacteristic(hap.Characteristic.SoftwareRevision)
+      .onGet(() => {
+        return axios.post(
+          URL,
+          { get: 'version' },
+        ).then(response => {
+          if (response.data.version !== undefined) {
+            return response.data.version;
+          } else {
+            return 'UNKNOWN';
+          }
+        })
+          .catch(error => {
+            this.log.error('Error during version query: ' + error);
+            return false;
+          });
+      });
+
     this.informationService.getCharacteristic(hap.Characteristic.FirmwareRevision)
       .onGet(() => {
         return axios.post(
           URL,
-          { 'get': 'version' },
+          { get: 'matrixInfo' },
         ).then(response => {
-          return response.data.version;
+          if (response.data.version !== undefined) {
+            return response.data.version;
+          } else {
+            return 'UNKNOWN';
+          }
         })
           .catch(error => {
             this.log.error('Error during version query: ' + error);
