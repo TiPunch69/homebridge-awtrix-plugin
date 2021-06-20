@@ -28,14 +28,6 @@ export = (api: API) => {
  * the API URL
  */
 const URL = '/api/v3/basics';
-/**
- * the available operations on Awtrix
- */
-enum OPERATION {
-  ONOFF = 'power',
-  APPLICATION = 'app',
-  ANIMATION = 'showAnimation',
-}
 
 class AwtrixAccessory implements AccessoryPlugin {
   /**
@@ -55,17 +47,9 @@ class AwtrixAccessory implements AccessoryPlugin {
    */
   private readonly humidityService: Service;
   /**
-   * a remote TV service for all operations
+   * the main switch service to power it on or off
    */
-  private readonly remoteService: Service;
-  /**
-   * indicates if a timer is running
-   */
-  private timerRunning = false;
-  /**
-   * the timer string
-   */
-  private timer: string;
+  private readonly switchService: Service;
 
   /**
    * the constructor from the HAP API
@@ -73,17 +57,17 @@ class AwtrixAccessory implements AccessoryPlugin {
   constructor(log: Logging, config: AccessoryConfig) {
     this.log = log;
     axios.defaults.baseURL = 'http://' + config.ip + ':' + config.port;
-    this.timer = config.timer;
 
     this.temperatureService = new hap.Service.TemperatureSensor(config.name);
     this.temperatureService.getCharacteristic(hap.Characteristic.CurrentTemperature)
-      .onGet(() => {
-        return axios.post(
+      .onGet(async () => {
+        return await axios.post(
           URL,
           { get: 'matrixInfo' },
         ).then(response => {
-          if (response.data.Temp !== undefined) {
-            return response.data.Temp.toFixed(1);
+          const temp = response.data.Temp;
+          if (temp !== undefined) {
+            return temp.toFixed(1);
           } else {
             return 0;
           }
@@ -96,13 +80,14 @@ class AwtrixAccessory implements AccessoryPlugin {
 
     this.humidityService = new hap.Service.HumiditySensor(config.name);
     this.humidityService.getCharacteristic(hap.Characteristic.CurrentRelativeHumidity)
-      .onGet(() => {
-        return axios.post(
+      .onGet(async () => {
+        return await axios.post(
           URL,
           { get: 'matrixInfo' },
         ).then(response => {
-          if (response.data.Hum !== undefined) {
-            return response.data.Hum.toFixed(1);
+          const hum = response.data.Hum;
+          if (hum !== undefined) {
+            return hum.toFixed(1);
           } else {
             return 0;
           }
@@ -113,33 +98,24 @@ class AwtrixAccessory implements AccessoryPlugin {
           });
       });
 
-    this.remoteService = new hap.Service.Television(config.name);
-    this.remoteService.setCharacteristic(hap.Characteristic.SleepDiscoveryMode, hap.Characteristic.SleepDiscoveryMode.ALWAYS_DISCOVERABLE);
-    this.remoteService.getCharacteristic(hap.Characteristic.Active)
+    this.switchService = new hap.Service.Switch(config.name);
+    this.switchService.getCharacteristic(hap.Characteristic.On)
       .onGet(() => {
         return axios.post(
           URL,
-          { 'get': 'powerState' },
+          { get: 'powerState' },
         ).then(response => {
-          if (response.data.powerState === 'true') {
-            return hap.Characteristic.Active.ACTIVE;
-          } else {
-            return hap.Characteristic.Active.INACTIVE;
-          }
+          return response.data.powerState;
         })
           .catch(error => {
             this.log.error('Error during power state query: ' + error);
-            return hap.Characteristic.Active.INACTIVE;
+            return false;
           });
       })
       .onSet((value) => {
-        let power = false;
-        if (value === hap.Characteristic.Active.ACTIVE) {
-          power = true;
-        }
         return axios.post(
           URL,
-          { power: power },
+          { power: value },
         ).then(response => {
           if (!response.data.success) {
             this.log.error('Error during setting the power state to power state ' + value);
@@ -149,46 +125,6 @@ class AwtrixAccessory implements AccessoryPlugin {
             this.log.error('Error during setting the power state to power state ' + value + ':' + error);
           });
       });
-    this.remoteService.getCharacteristic(hap.Characteristic.RemoteKey)
-      .onSet((newValue) => {
-        switch (newValue) {
-          case hap.Characteristic.RemoteKey.INFORMATION: {
-            this.sendOperation(OPERATION.ANIMATION, 'random');
-            break;
-          }
-          case hap.Characteristic.RemoteKey.ARROW_LEFT: {
-            this.sendOperation(OPERATION.APPLICATION, 'back');
-            break;
-          }
-          case hap.Characteristic.RemoteKey.ARROW_RIGHT: {
-            this.sendOperation(OPERATION.APPLICATION, 'next');
-            break;
-          }
-          case hap.Characteristic.RemoteKey.PLAY_PAUSE: {
-            this.sendOperation(OPERATION.APPLICATION, 'pause');
-            break;
-          }
-          case hap.Characteristic.RemoteKey.SELECT: {
-            let data = { 'timer': this.timer };
-            if (this.timerRunning) {
-              // timer is running
-              data = { 'timer': 'stop' };
-            }
-            axios.post(
-              URL,
-              data,
-            ).then(response => {
-              if (!response.data.success) {
-                this.log.error('Error during setting the timer');
-              }
-            })
-              .catch(error => {
-                this.log.error('Error during setting the timer: ' + error);
-              });
-            break;
-          }
-        }
-      });
 
     this.informationService = new hap.Service.AccessoryInformation()
       .setCharacteristic(hap.Characteristic.Manufacturer, 'Blueforcer')
@@ -196,13 +132,14 @@ class AwtrixAccessory implements AccessoryPlugin {
       .setCharacteristic(hap.Characteristic.Name, config.name);
 
     this.informationService.getCharacteristic(hap.Characteristic.SoftwareRevision)
-      .onGet(() => {
-        return axios.post(
+      .onGet(async () => {
+        return await axios.post(
           URL,
           { get: 'version' },
         ).then(response => {
-          if (response.data.version !== undefined) {
-            return response.data.version;
+          const version = response.data.version;
+          if (version !== undefined) {
+            return version;
           } else {
             return 'UNKNOWN';
           }
@@ -219,8 +156,9 @@ class AwtrixAccessory implements AccessoryPlugin {
           URL,
           { get: 'matrixInfo' },
         ).then(response => {
-          if (response.data.version !== undefined) {
-            return response.data.version;
+          const version = response.data.version;
+          if (version !== undefined) {
+            return version;
           } else {
             return 'UNKNOWN';
           }
@@ -231,26 +169,7 @@ class AwtrixAccessory implements AccessoryPlugin {
           });
       });
 
-    log.info('Awtrix initializiation finished');
-  }
-
-  /**
-   * This function sends a command to the Awtrix clock.
-   * @param operation the operation that should be executed
-   * @param value the detailed operation value
-   */
-  private sendOperation(operation: OPERATION, value: string) {
-    axios.post(
-      URL,
-      { OPERATION: value },
-    ).then(response => {
-      if (!response.data.success) {
-        this.log.error('Error during setting of operation "' + OPERATION + '" to value "' + value + '"');
-      }
-    })
-      .catch(error => {
-        this.log.error('Error during setting of operation "' + OPERATION + '" to value "' + value + '":' + error);
-      });
+    log.info('Awtrix initializiation initializing');
   }
 
   /*
@@ -262,7 +181,7 @@ class AwtrixAccessory implements AccessoryPlugin {
       this.informationService,
       this.temperatureService,
       this.humidityService,
-      this.remoteService,
+      this.switchService,
     ];
   }
 
