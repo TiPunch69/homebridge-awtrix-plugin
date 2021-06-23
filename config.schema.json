@@ -1,6 +1,6 @@
 {
     "pluginAlias": "Awtrix Plugin",
-    "pluginType": "accessory",
+    "pluginType": "platform",
     "headerDisplay": "Homebridge plugin for an Awtrix Clock",
     "footerDisplay": "Rudolf-Michael Liebhart, June 2021",
     "singular": true,
