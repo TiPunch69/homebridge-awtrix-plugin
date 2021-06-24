@@ -1,5 +1,5 @@
 {
-    "pluginAlias": "Awtrix Plugin",
+    "pluginAlias": "Awtrix Platform",
     "pluginType": "platform",
     "headerDisplay": "Homebridge plugin for an Awtrix Clock",
     "footerDisplay": "Rudolf-Michael Liebhart, June 2021",
@@ -25,12 +25,6 @@
                 "type": "string",
                 "required": true,
                 "default": "7000"
-            },
-            "timer": {
-                "title": "Timer",
-                "type": "string",
-                "required":"true",
-                "pattern":"^[0-5][0-9]:[0-5][0-9]:00$"
             }
         }
     }

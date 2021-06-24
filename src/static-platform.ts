@@ -36,12 +36,14 @@ class AwtrixStaticPlatform implements StaticPlatformPlugin {
   private readonly log: Logging;
 
   constructor(log: Logging, config: PlatformConfig) {
+    log.info('Starting configuration');
     this.log = log;
     axios.defaults.baseURL = 'http://' + config.ip + ':' + config.port;
 
     this.informationService = new hap.Service.AccessoryInformation()
       .setCharacteristic(hap.Characteristic.Manufacturer, 'Blueforcer')
-      .setCharacteristic(hap.Characteristic.Model, 'Awtrix');
+      .setCharacteristic(hap.Characteristic.Model, 'Awtrix')
+      .setCharacteristic(hap.Characteristic.Name, 'Awtrix');
     this.informationService.getCharacteristic(hap.Characteristic.SoftwareRevision)
       .onGet(async () => {
         return await axios.post(
