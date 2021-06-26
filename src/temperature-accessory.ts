@@ -5,11 +5,15 @@ import {
   Service,
 }
   from 'homebridge';
-import axios from 'axios';
+import { MatrixInformation } from './matrix-information';
 /**
  * the basic temperature and humidity information
  */
 export class TemperatureAccessory implements AccessoryPlugin {
+  /**
+   * the display name (this property must exist)
+   */
+  name: string;
   /**
    * the general log file
    */
@@ -32,54 +36,28 @@ export class TemperatureAccessory implements AccessoryPlugin {
    * @param hap the HAP package
    * @param log the logging interface
    * @param name the display name
-   * @param url the target URL
+   * @param matrixData the response matrix data
    * @param informationSerivce the shared information service
    */
-  constructor(hap: HAP, log: Logging, name: string, url: string, informationService: Service) {
+  constructor(hap: HAP, log: Logging, name: string, matrixInformation: MatrixInformation, informationService: Service) {
     this.log = log;
     this.informationService = informationService;
+    this.name = name;
 
-    this.temperatureService = new hap.Service.TemperatureSensor(name);
+    this.temperatureService = new hap.Service.TemperatureSensor(this.name);
 
     this.temperatureService.getCharacteristic(hap.Characteristic.CurrentTemperature)
-      .onGet(async () => {
-        return await axios.post(
-          url,
-          { get: 'matrixInfo' },
-        ).then(response => {
-          const temp = response.data.Temp;
-          if (temp !== undefined) {
-            return temp.toFixed(1);
-          } else {
-            return 0;
-          }
-        })
-          .catch(error => {
-            this.log.error('Error retrieving temperature: ' + error);
-            return false;
-          });
+      .onGet(() => {
+        return matrixInformation.temperature;
       });
 
-    this.humidityService = new hap.Service.HumiditySensor(name);
+    this.humidityService = new hap.Service.HumiditySensor(this.name);
     this.humidityService.getCharacteristic(hap.Characteristic.CurrentRelativeHumidity)
-      .onGet(async () => {
-        return await axios.post(
-          url,
-          { get: 'matrixInfo' },
-        ).then(response => {
-          const hum = response.data.Hum;
-          if (hum !== undefined) {
-            return hum.toFixed(1);
-          } else {
-            return 0;
-          }
-        })
-          .catch(error => {
-            this.log.error('Error retrieving humidity: ' + error);
-            return false;
-          });
+      .onGet(() => {
+        return matrixInformation.humidity;
       });
-    log.info('Awtrix initializiation initializing');
+
+    log.info('Awtrix Temperature Accessory finished initializing');
   }
 
   /*

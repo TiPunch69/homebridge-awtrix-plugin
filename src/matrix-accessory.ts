@@ -11,6 +11,10 @@ import axios from 'axios';
  */
 export class MatrixAccessory implements AccessoryPlugin {
   /**
+   * the display name (this property must exist)
+   */
+  name: string;
+  /**
    * the general log file
    */
   private readonly log: Logging;
@@ -22,6 +26,14 @@ export class MatrixAccessory implements AccessoryPlugin {
    * the general power switch
    */
   private readonly powerSwitchService: Service;
+  /**
+   * a button to switch to the next app
+   */
+  private readonly nexAppSwitchService: Service;
+  /**
+   * indicates that the power is off
+   */
+  private powerOn = false;
 
   /**
    * the constructor from the HAP API
@@ -34,24 +46,31 @@ export class MatrixAccessory implements AccessoryPlugin {
   constructor(hap: HAP, log: Logging, name: string, url: string, informationService: Service) {
     this.log = log;
     this.informationService = informationService;
+    this.name = name;
 
-    this.powerSwitchService = new hap.Service.StatefulProgrammableSwitch(name);
+    this.powerSwitchService = new hap.Service.Switch(this.name, 'On');
 
-    this.powerSwitchService.getCharacteristic(hap.Characteristic.ProgrammableSwitchOutputState)
-      .onGet(() => {
-        return axios.post(
+    this.powerSwitchService.setCharacteristic(hap.Characteristic.Name, 'On/Off');
+    this.powerSwitchService.getCharacteristic(hap.Characteristic.On)
+      .onGet(async () => {
+        return await axios.post(
           url,
           { get: 'powerState' },
         ).then(response => {
-          return response.data.powerState;
+          const powerState = response.data.powerState;
+          if (powerState !== undefined){
+            return response.data.powerState;
+          } else {
+            return false;
+          }
         })
           .catch(error => {
             this.log.error('Error during power state query: ' + error);
             return false;
           });
       })
-      .onSet((value) => {
-        return axios.post(
+      .onSet(async (value) => {
+        return await axios.post(
           url,
           { power: value },
         ).then(response => {
@@ -61,6 +80,26 @@ export class MatrixAccessory implements AccessoryPlugin {
         })
           .catch(error => {
             this.log.error('Error during setting the power state to power state ' + value + ':' + error);
+          });
+      });
+
+    this.nexAppSwitchService = new hap.Service.Switch(this.name, 'Next');
+    this.nexAppSwitchService.setCharacteristic(hap.Characteristic.Name, 'Next');
+    this.nexAppSwitchService.getCharacteristic(hap.Characteristic.On)
+      .onGet(async () => {
+        return false;
+      })
+      .onSet(async (value) => {
+        return await axios.post(
+          url,
+          { app: 'next' },
+        ).then(response => {
+          if (!response.data.success) {
+            this.log.error('Error during setting the next app ' + value);
+          }
+        })
+          .catch(error => {
+            this.log.error('Error during setting the next app ' + value + ':' + error);
           });
       });
   }
@@ -73,6 +112,7 @@ export class MatrixAccessory implements AccessoryPlugin {
     return [
       this.informationService,
       this.powerSwitchService,
+      this.nexAppSwitchService,
     ];
   }
 }
