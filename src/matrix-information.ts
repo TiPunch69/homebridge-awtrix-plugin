@@ -29,7 +29,7 @@ export class MatrixInformation {
 
     setInterval(() => {
       this.fetchInformation(url);
-    }, 5000);
+    }, 10000);
   }
 
   /**
@@ -41,7 +41,8 @@ export class MatrixInformation {
       url,
       { get: 'matrixInfo' },
     ).then(response => {
-      if (response.data !== undefined){
+      if ((response.data !== undefined) && (Object.keys(response.data).length !== 0)){
+        this.log.info('data: ' + response.data);
         this.temperature = response.data.Temp;
         this.humidity = response.data.Hum;
         this.version = response.data.version;
