@@ -1,6 +1,10 @@
 import {
   Logging,
 } from 'homebridge';
+/**
+ * the refresh time for the matrix information (including temperature and humidity)
+ */
+const REFRESH_TIME = 30000;
 
 import axios from 'axios';
 
@@ -29,7 +33,7 @@ export class MatrixInformation {
 
     setInterval(() => {
       this.fetchInformation(url);
-    }, 10000);
+    }, REFRESH_TIME);
   }
 
   /**
