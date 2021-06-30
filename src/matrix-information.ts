@@ -46,7 +46,6 @@ export class MatrixInformation {
       { get: 'matrixInfo' },
     ).then(response => {
       if ((response.data !== undefined) && (Object.keys(response.data).length !== 0)){
-        this.log.info('data: ' + response.data);
         this.temperature = response.data.Temp;
         this.humidity = response.data.Hum;
         this.version = response.data.version;

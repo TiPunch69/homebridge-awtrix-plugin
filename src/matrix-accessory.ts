@@ -19,17 +19,17 @@ export class MatrixAccessory implements AccessoryPlugin {
    */
   name: string;
   /**
-   * the current app state
-   */
-  private currentAppState: number;
-  /**
-   * the target app state
-   */
-  private targetAppState: number;
-  /**
    * indicates if the app loop is on hold
    */
   private appLoopOnHold = false;
+  /**
+   * animation
+   */
+  private animationToggleState = false;
+  /**
+   * next app
+   */
+  private nextAppToggleState = false;
   /**
    * the general log file
    */
@@ -43,22 +43,28 @@ export class MatrixAccessory implements AccessoryPlugin {
    */
   private readonly powerSwitchService: Service;
   /**
-   * the service for the app matrix
+   * the service to pause the app loop
    */
   private readonly appLoopService: Service;
+  /**
+   * the service for matrix animations
+   */
+  private readonly animationService: Service;
+  /**
+   * the service to switch to the next app
+   */
+  private readonly nextAppService: Service;
 
   /**
-   * the constructor from the HAP API
-   * @param hap the HAP package
-   * @param log the logging interface
-   * @param name the display name
-   * @param url the target URL
-   * @param informationSerivce the shared information service
-   */
+* the constructor from the HAP API
+* @param hap the HAP package
+* @param log the logging interface
+* @param name the display name
+* @param url the target URL
+* @param informationSerivce the shared information service
+*/
   constructor(hap: HAP, log: Logging, name: string, url: string, informationService: Service) {
     this.url = url;
-    this.currentAppState = hap.Characteristic.CurrentMediaState.LOADING;
-    this.targetAppState = hap.Characteristic.TargetMediaState.PLAY;
     this.log = log;
     this.informationService = informationService;
     this.name = name;
@@ -73,24 +79,9 @@ export class MatrixAccessory implements AccessoryPlugin {
           { get: 'powerState' },
         ).then(response => {
           const power = response.data.powerState;
-          if (power !== undefined){
+          if (power !== undefined) {
             return power;
-            // set the state according to the power
-            if (power){
-              // power is on, so check the apploop
-              if (this.appLoopOnHold){
-                // apploop is playing
-                this.currentAppState = hap.Characteristic.CurrentMediaState.PAUSE;
-              } else {
-                this.currentAppState = hap.Characteristic.CurrentMediaState.PLAY;
-              }
-            } else {
-              // power is off
-              this.currentAppState = hap.Characteristic.CurrentMediaState.INTERRUPTED;
-            }
           } else {
-            // no result from Awtrix
-            this.currentAppState = hap.Characteristic.CurrentMediaState.LOADING;
             return false;
           }
         })
@@ -100,7 +91,7 @@ export class MatrixAccessory implements AccessoryPlugin {
           });
       })
       .onSet(async (value) => {
-        this.log.info('Settting power to ' + value);
+        this.log.debug('Settting power to ' + value);
         return await axios.post(
           url,
           { power: value },
@@ -114,61 +105,101 @@ export class MatrixAccessory implements AccessoryPlugin {
           });
       });
 
-    this.appLoopService = new hap.Service.SmartSpeaker(this.name, 'matrix');
-    this.appLoopService.setCharacteristic(hap.Characteristic.Name, 'Apps');
+    this.appLoopService = new hap.Service.Switch(this.name, 'AppLoop');
 
-    this.appLoopService.getCharacteristic(hap.Characteristic.TargetMediaState)
+    this.appLoopService.setCharacteristic(hap.Characteristic.Name, 'AppLoop');
+    this.appLoopService.getCharacteristic(hap.Characteristic.On)
       .onGet(() => {
-        return this.targetAppState;
+        return this.appLoopOnHold;
       })
-      .onSet((value) => {
-        switch (value) {
-          case hap.Characteristic.TargetMediaState.PLAY:
-            this.targetAppState = hap.Characteristic.TargetMediaState.PLAY;
-            this.sendOperation('app', 'pause');
-            break;
-          case hap.Characteristic.TargetMediaState.PAUSE:
-            this.targetAppState = hap.Characteristic.TargetMediaState.PAUSE;
-            this.sendOperation('app', 'pause');
-            break;
-          case hap.Characteristic.TargetMediaState.STOP:
-            this.targetAppState = hap.Characteristic.TargetMediaState.PLAY;
-            if (this.currentAppState === hap.Characteristic.TargetMediaState.PLAY) {
-              this.sendOperation('app', 'next');
+      .onSet(async () => {
+        this.log.debug('Pausing apploop');
+        await axios.post(
+          this.url,
+          { app: 'pause' },
+        ).then(response => {
+          if (response.data === 'App switching paused') {
+            this.appLoopOnHold = true;
+          } else {
+            this.appLoopOnHold = false;
+          }
+        })
+
+          .catch(error => {
+            this.log.error('Error during pausing apploop:' + error);
+          });
+      });
+
+    this.animationService = new hap.Service.Switch(this.name, 'Animation');
+
+    this.animationService.setCharacteristic(hap.Characteristic.Name, 'Animation');
+    this.animationService.getCharacteristic(hap.Characteristic.On)
+      .onGet(() => {
+        return this.animationToggleState;
+      })
+      .onSet(async (value) => {
+        this.animationToggleState = value ? true : false;
+        if (value) {
+          this.log.debug('Running animation.');
+
+          await axios.post(
+            this.url,
+            { showAnimation: 'random' },
+          ).then(response => {
+            if (!response.data.success) {
+              this.log.error('Error during animation');
             }
-            break;
+          })
+            .catch(error => {
+              this.log.error('Error during animation:' + error);
+            });
+          setTimeout(() => {
+            this.animationService.setCharacteristic(hap.Characteristic.On, false);
+          }, 250);
+        }
+      });
+
+    this.nextAppService = new hap.Service.Switch(this.name, 'Next');
+
+    this.nextAppService.setCharacteristic(hap.Characteristic.Name, 'Next');
+    this.nextAppService.getCharacteristic(hap.Characteristic.On)
+      .onGet(() => {
+        return this.nextAppToggleState;
+      })
+      .onSet(async (value) => {
+        this.nextAppToggleState = value ? true : false;
+        if (value) {
+          this.log.debug('Moving to next app');
+
+          await axios.post(
+            this.url,
+            { app: 'next' },
+          ).then(response => {
+            if (!response.data.success) {
+              this.log.error('Error app switching');
+            }
+          })
+            .catch(error => {
+              this.log.error('Error during app switching:' + error);
+            });
+          setTimeout(() => {
+            this.nextAppService.setCharacteristic(hap.Characteristic.On, false);
+          }, 250);
         }
       });
   }
 
-  /**
-   * This function sends a command to the Awtrix clock.
-   * @param operation the operation that should be executed
-   * @param value the detailed operation value
-   */
-  private async sendOperation(operation: string, value: string) {
-    await axios.post(
-      this.url,
-      { operation: value },
-    ).then(response => {
-      if (!response.data.success) {
-        this.log.error('Error during setting of operation "' + operation + '" to value "' + value + '"');
-      }
-    })
-      .catch(error => {
-        this.log.error('Error during setting of operation "' + operation + '" to value "' + value + '":' + error);
-      });
-  }
-
   /*
-   * This method is called directly after creation of this instance.
-   * It should return all services which should be added to the accessory.
-   */
+* This method is called directly after creation of this instance.
+* It should return all services which should be added to the accessory.
+*/
   getServices(): Service[] {
     return [
       this.informationService,
       this.powerSwitchService,
       this.appLoopService,
+      this.animationService,
+      this.nextAppService,
     ];
   }
 }
