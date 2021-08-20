@@ -40,6 +40,10 @@ class AwtrixStaticPlatform implements StaticPlatformPlugin {
    */
   private readonly log: Logging;
   /**
+   * indicates if a temperature sensor is present
+   */
+  private temperatureSensor: boolean;
+  /**
    * the matrix data
    */
   public matrixData;
@@ -50,6 +54,9 @@ class AwtrixStaticPlatform implements StaticPlatformPlugin {
     axios.defaults.baseURL = 'http://' + config.ip + ':' + config.port;
 
     this.matrixInformation = new MatrixInformation(URL, log);
+
+    this.temperatureSensor = config.temperature;
+    log.info('Temperature sensor present: ' + this.temperatureSensor);
 
     this.informationService = new hap.Service.AccessoryInformation('Awtrix')
       .setCharacteristic(hap.Characteristic.Manufacturer, 'Blueforcer')
@@ -78,7 +85,6 @@ class AwtrixStaticPlatform implements StaticPlatformPlugin {
         return this.matrixInformation.version;
       });
 
-    // probably parse config or something here
     log.info('Awtrix platform finished initializing!');
   }
 
@@ -89,9 +95,16 @@ class AwtrixStaticPlatform implements StaticPlatformPlugin {
    * The set of exposed accessories CANNOT change over the lifetime of the plugin!
    */
   accessories(callback: (foundAccessories: AccessoryPlugin[]) => void): void {
-    callback([
-      new TemperatureAccessory(hap, this.log, 'Awtrix Temperature', this.matrixInformation, this.informationService),
-      new MatrixAccessory(hap, this.log, 'Awtrix Matrix', URL, this.informationService),
-    ]);
+    if (this.temperatureSensor === true){
+      callback([
+        new TemperatureAccessory(hap, this.log, 'Awtrix Temperature', this.matrixInformation, this.informationService),
+        new MatrixAccessory(hap, this.log, 'Awtrix Matrix', URL, this.informationService),
+      ]);
+    } else {
+      // no temperature sensor present
+      callback([
+        new MatrixAccessory(hap, this.log, 'Awtrix Matrix', URL, this.informationService),
+      ]);
+    }
   }
 }

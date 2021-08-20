@@ -25,7 +25,13 @@
                 "type": "string",
                 "required": true,
                 "default": "7000"
-            }
+            },
+            "temperature": {
+                "title": "Temperature and humidity sensor available",
+                "type": "boolean",
+                "required": true,
+                "default": true
+            }        
         }
     }
 }
